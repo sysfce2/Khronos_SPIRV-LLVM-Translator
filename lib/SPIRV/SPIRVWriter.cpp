@@ -951,12 +951,19 @@ SPIRVFunction *LLVMToSPIRVBase::transFunctionDecl(Function *F) {
       // Order of integer numbers in MD node follows the order of function
       // parameters on which we shall attach the appropriate decoration. Add
       // decoration only if MD value is 1.
-      int LocID = 0;
+      int IsRuntimeAligned = 0;
       if (!isa<MDString>(RuntimeAligned->getOperand(ArgNo)) &&
           !isa<MDNode>(RuntimeAligned->getOperand(ArgNo)))
-        LocID = getMDOperandAsInt(RuntimeAligned, ArgNo);
-      if (LocID == 1)
-        BA->addDecorate(internal::DecorationRuntimeAlignedINTEL, LocID);
+        IsRuntimeAligned = getMDOperandAsInt(RuntimeAligned, ArgNo);
+      if (IsRuntimeAligned == 1) {
+        // TODO: to replace non-conformant to the spec decoration generation
+        // with:
+        // BM->addExtension(ExtensionID::SPV_INTEL_runtime_aligned);
+        // BM->addCapability(CapabilityRuntimeAlignedAttributeINTEL);
+        // BA->addAttr(FunctionParameterAttributeRuntimeAlignedINTEL);
+        BA->addDecorate(internal::DecorationRuntimeAlignedINTEL,
+                        IsRuntimeAligned);
+      }
     }
   }
   if (Attrs.hasRetAttr(Attribute::ZExt))
@@ -6502,18 +6509,13 @@ LLVMToSPIRVBase::transBuiltinToInstWithoutDecoration(Op OC, CallInst *CI,
     return BM->addCompositeConstructInst(transType(CI->getType()), Operands,
                                          BB);
   }
-  case OpIAddCarry: {
+  case OpIAddCarry:
+  case OpISubBorrow:
+  case OpUMulExtended:
+  case OpSMulExtended: {
     Function *F = CI->getCalledFunction();
     StructType *St = cast<StructType>(F->getParamStructRetType(0));
-    SPIRVValue *V = BM->addBinaryInst(OpIAddCarry, transType(St),
-                                      transValue(CI->getArgOperand(1), BB),
-                                      transValue(CI->getArgOperand(2), BB), BB);
-    return BM->addStoreInst(transValue(CI->getArgOperand(0), BB), V, {}, BB);
-  }
-  case OpISubBorrow: {
-    Function *F = CI->getCalledFunction();
-    StructType *St = cast<StructType>(F->getParamStructRetType(0));
-    SPIRVValue *V = BM->addBinaryInst(OpISubBorrow, transType(St),
+    SPIRVValue *V = BM->addBinaryInst(OC, transType(St),
                                       transValue(CI->getArgOperand(1), BB),
                                       transValue(CI->getArgOperand(2), BB), BB);
     return BM->addStoreInst(transValue(CI->getArgOperand(0), BB), V, {}, BB);
